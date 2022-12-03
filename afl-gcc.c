@@ -39,6 +39,10 @@
 
 */
 
+/*
+ * afl-gcc.c 用于生成 afl-gcc afl-g++ afl-clang afl-clang++
+ */
+
 #define AFL_MAIN
 
 #include "config.h"
@@ -51,6 +55,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * afl-gcc.c 实现了一个简单的wrapper，主要逻辑就是填充如下几个参数，
+ * 之后构建完整的命令行参数，并调用实际的CC对目标进行编译构建
+ */
 static u8*  as_path;                /* Path to the AFL 'as' wrapper      */
 static u8** cc_params;              /* Parameters passed to the real CC  */
 static u32  cc_par_cnt = 1;         /* Param count, including argv0      */
@@ -80,19 +88,23 @@ static void find_as(u8* argv0) {
 
   }
 
+  // slash: "/afl-gcc"
   slash = strrchr(argv0, '/');
 
   if (slash) {
 
+    // dir: "/path/to/AFL"
     u8 *dir;
 
     *slash = 0;
     dir = ck_strdup(argv0);
     *slash = '/';
 
+    // tmp: "/path/to/AFL/afl-as" for test
     tmp = alloc_printf("%s/afl-as", dir);
 
     if (!access(tmp, X_OK)) {
+      // 将成功找到的路径写入全局变量
       as_path = dir;
       ck_free(tmp);
       return;
@@ -124,17 +136,20 @@ static void edit_params(u32 argc, char** argv) {
   u8 m32_set = 0;
 #endif
 
+  // ck_alloc: 分配堆内存并置\0
   cc_params = ck_alloc((argc + 128) * sizeof(u8*));
 
+  // name: "afl-gcc" or "afl-clang*"
   name = strrchr(argv[0], '/');
   if (!name) name = argv[0]; else name++;
 
   if (!strncmp(name, "afl-clang", 9)) {
 
+    // clang mode 启用，并通过环境变量传递给外部环境
     clang_mode = 1;
-
     setenv(CLANG_ENV_VAR, "1", 1);
 
+    // 在全局变量中设置真正的编译器入口
     if (!strcmp(name, "afl-clang++")) {
       u8* alt_cxx = getenv("AFL_CXX");
       cc_params[0] = alt_cxx ? alt_cxx : (u8*)"clang++";
@@ -169,7 +184,7 @@ static void edit_params(u32 argc, char** argv) {
     }
 
 #else
-
+    // 反之若使用gcc、g++则来到这里构建命令行
     if (!strcmp(name, "afl-g++")) {
       u8* alt_cxx = getenv("AFL_CXX");
       cc_params[0] = alt_cxx ? alt_cxx : (u8*)"g++";
@@ -185,9 +200,15 @@ static void edit_params(u32 argc, char** argv) {
 
   }
 
+  // 对于用户传入的每一个命令行参数进行解析，并根据结果设定相应变量
   while (--argc) {
+
+    // 当前参数
     u8* cur = *(++argv);
 
+    /* -B<prefix>, --prefix <arg>, --prefix=<arg>
+     * Search $prefix$file for executables, libraries, and data files. If $prefix is a directory, search $prefix/$file
+     */
     if (!strncmp(cur, "-B", 2)) {
 
       if (!be_quiet) WARNF("-B is already set, overriding");
@@ -197,17 +218,25 @@ static void edit_params(u32 argc, char** argv) {
 
     }
 
+    /* -fintegrated-as, -fno-integrated-as, -integrated-as
+     * Enable the integrated assembler
+     */
     if (!strcmp(cur, "-integrated-as")) continue;
 
+    /* -pipe, --pipe
+     * Use pipes between commands, when possible
+     */
     if (!strcmp(cur, "-pipe")) continue;
 
 #if defined(__FreeBSD__) && defined(__x86_64__)
     if (!strcmp(cur, "-m32")) m32_set = 1;
 #endif
 
+    // ASAN 与 MSAN 标记
     if (!strcmp(cur, "-fsanitize=address") ||
         !strcmp(cur, "-fsanitize=memory")) asan_set = 1;
 
+    // FORTIFY 标记
     if (strstr(cur, "FORTIFY_SOURCE")) fortify_set = 1;
 
     cc_params[cc_par_cnt++] = cur;
@@ -218,12 +247,19 @@ static void edit_params(u32 argc, char** argv) {
   cc_params[cc_par_cnt++] = as_path;
 
   if (clang_mode)
+    /* -fintegrated-as, -fno-integrated-as, -integrated-as
+     * Enable the integrated assembler
+     */
     cc_params[cc_par_cnt++] = "-no-integrated-as";
 
   if (getenv("AFL_HARDEN")) {
 
+    /* -fstack-protector-all
+     * Enable stack protectors for all functions
+     */
     cc_params[cc_par_cnt++] = "-fstack-protector-all";
 
+    // 启用fortify
     if (!fortify_set)
       cc_params[cc_par_cnt++] = "-D_FORTIFY_SOURCE=2";
 
@@ -309,6 +345,7 @@ static void edit_params(u32 argc, char** argv) {
 
 int main(int argc, char** argv) {
 
+// isatty - test whether a file descriptor refers to a terminal
   if (isatty(2) && !getenv("AFL_QUIET")) {
 
     SAYF(cCYA "afl-cc " cBRI VERSION cRST " by <lcamtuf@google.com>\n");
@@ -332,9 +369,10 @@ int main(int argc, char** argv) {
     exit(1);
 
   }
-
+  // 搜索路径确保afl-as的存在，并将其路径填充到as_path全局变量中
   find_as(argv[0]);
 
+  // 推导最终的CC与编译参数，填充于cc_params全局变量中
   edit_params(argc, argv);
 
   execvp(cc_params[0], (char**)cc_params);

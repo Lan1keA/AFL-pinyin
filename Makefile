@@ -27,13 +27,16 @@ MISC_PATH   = $(PREFIX)/share/afl
 PROGS       = afl-gcc afl-fuzz afl-showmap afl-tmin afl-gotcpu afl-analyze
 SH_PROGS    = afl-plot afl-cmin afl-whatsup
 
+# -funroll-loops：启用循环展开优化
 CFLAGS     ?= -O3 -funroll-loops
+
+# -D_FORTIFY_SOURCE=2：启用FORTIFY；-Wno-pointer-sign: Not warn for pointer argument passing or assignment with different signedness
 CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign \
 	      -DAFL_PATH=\"$(HELPER_PATH)\" -DDOC_PATH=\"$(DOC_PATH)\" \
 	      -DBIN_PATH=\"$(BIN_PATH)\"
 
 ifneq "$(filter Linux GNU%,$(shell uname))" ""
-  LDFLAGS  += -ldl
+  LDFLAGS  += -ldl # libdl.so
 endif
 
 ifeq "$(findstring clang, $(shell $(CC) --version 2>/dev/null))" ""
@@ -46,6 +49,7 @@ COMM_HDR    = alloc-inl.h config.h debug.h types.h
 
 all: test_x86 $(PROGS) afl-as test_build all_done
 
+# 是否在x86平台构建AFL？
 ifndef AFL_NO_X86
 
 test_x86:
