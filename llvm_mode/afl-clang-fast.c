@@ -28,6 +28,11 @@
    of flags, and then calls the real compiler.
 */
 
+/*
+ * afl-clang-fast.c用于实现llvm mode的CC wrapper
+ * 整体逻辑和afl-gcc.c类似
+ */
+
 #define AFL_MAIN
 
 #include "../config.h"
@@ -126,21 +131,23 @@ static void edit_params(u32 argc, char** argv) {
 
      http://clang.llvm.org/docs/SanitizerCoverage.html#tracing-pcs-with-guards */
 
-#ifdef USE_TRACE_PC
+#ifdef USE_TRACE_PC // 使用（当年）clang新引入的trace-pc-guard来进行插桩，即clang原生方案所需参数
   cc_params[cc_par_cnt++] = "-fsanitize-coverage=trace-pc-guard";
 #ifndef __ANDROID__
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-sanitizer-coverage-block-threshold=0";
 #endif
-#else
+#else // 使用afl-llvm-pass.so来进行自定义插桩，即LLVM Pass自定义方案所需参数
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] = "-Xclang";
+  // 将afl-llvm-pass.so一起构建，即引入该LLVM Pass
   cc_params[cc_par_cnt++] = alloc_printf("%s/afl-llvm-pass.so", obj_path);
 #endif /* ^USE_TRACE_PC */
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
 
+  // 对于用户传入的每一个编译参数：
   while (--argc) {
     u8* cur = *(++argv);
 

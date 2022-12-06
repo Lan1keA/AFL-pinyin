@@ -207,8 +207,7 @@ static void edit_params(u32 argc, char** argv) {
     u8* cur = *(++argv);
 
     /* -B<prefix>, --prefix <arg>, --prefix=<arg>
-     * Search $prefix$file for executables, libraries, and data files. If $prefix is a directory, search $prefix/$file
-     */
+       Search $prefix$file for executables, libraries, and data files. If $prefix is a directory, search $prefix/$file */
     if (!strncmp(cur, "-B", 2)) {
 
       if (!be_quiet) WARNF("-B is already set, overriding");
@@ -219,13 +218,11 @@ static void edit_params(u32 argc, char** argv) {
     }
 
     /* -fintegrated-as, -fno-integrated-as, -integrated-as
-     * Enable the integrated assembler
-     */
+       Enable the integrated assembler */
     if (!strcmp(cur, "-integrated-as")) continue;
 
     /* -pipe, --pipe
-     * Use pipes between commands, when possible
-     */
+       Use pipes between commands, when possible */
     if (!strcmp(cur, "-pipe")) continue;
 
 #if defined(__FreeBSD__) && defined(__x86_64__)
@@ -248,15 +245,13 @@ static void edit_params(u32 argc, char** argv) {
 
   if (clang_mode)
     /* -fintegrated-as, -fno-integrated-as, -integrated-as
-     * Enable the integrated assembler
-     */
+       Enable the integrated assembler */
     cc_params[cc_par_cnt++] = "-no-integrated-as";
 
   if (getenv("AFL_HARDEN")) {
 
     /* -fstack-protector-all
-     * Enable stack protectors for all functions
-     */
+       Enable stack protectors for all functions */
     cc_params[cc_par_cnt++] = "-fstack-protector-all";
 
     // 启用fortify

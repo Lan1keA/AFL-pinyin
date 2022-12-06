@@ -29,6 +29,10 @@
    in ../afl-as.h.
 */
 
+/*
+    LLVM Pass参考：https://www.inf.ed.ac.uk/teaching/courses/ct/18-19/slides/llvm-2-writing_pass.pdf
+*/
+
 #define AFL_LLVM_PASS
 
 #include "../config.h"
@@ -49,6 +53,7 @@ using namespace llvm;
 
 namespace {
 
+  // 为了Pass代码对整个目标程序起效，我们需要的是ModulePass
   class AFLCoverage : public ModulePass {
 
     public:
@@ -69,9 +74,10 @@ namespace {
 
 char AFLCoverage::ID = 0;
 
-
+// runOnModule方法会对整个目标程序运行
 bool AFLCoverage::runOnModule(Module &M) {
 
+  // 通过getContext来获取LLVMContext，其保存了整个程序里分配的类型和常量信息
   LLVMContext &C = M.getContext();
 
   IntegerType *Int8Ty  = IntegerType::getInt8Ty(C);
@@ -88,7 +94,7 @@ bool AFLCoverage::runOnModule(Module &M) {
   } else be_quiet = 1;
 
   /* Decide instrumentation ratio */
-
+  // inst_ratio 插桩概率，默认为100%，即每个edge都插桩
   char* inst_ratio_str = getenv("AFL_INST_RATIO");
   unsigned int inst_ratio = 100;
 
@@ -102,11 +108,12 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   /* Get globals for the SHM region and the previous location. Note that
      __afl_prev_loc is thread-local. */
-
+  // 指向共享内存的指针
   GlobalVariable *AFLMapPtr =
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
+  // 上一个BB的编号
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
@@ -115,43 +122,57 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   int inst_blocks = 0;
 
+  /* 对于Module中的每一个Function:
+        对于该Function中的每一个Basic Block: */
   for (auto &F : M)
     for (auto &BB : F) {
 
+      // IP为指向当前BB第一个可插桩位置的指针
       BasicBlock::iterator IP = BB.getFirstInsertionPt();
+      // 实例化一个IRBuilder用于实际的插桩操作
       IRBuilder<> IRB(&(*IP));
 
       if (AFL_R(100) >= inst_ratio) continue;
 
-      /* Make up cur_loc */
+      /*
+        接下来的代码完成如下逻辑：
+          cur_location = <COMPILE_TIME_RANDOM>;
+          shared_mem[cur_location ^ prev_location]++; 
+          prev_location = cur_location >> 1;
+        参见：https://lcamtuf.coredump.cx/afl/technical_details.txt
+      */
 
+      /* Make up cur_loc */
+      // 随机化得到当前BB的编号
       unsigned int cur_loc = AFL_R(MAP_SIZE);
 
       ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
 
       /* Load prev_loc */
-
+      // 通过插入load指令，获取前一个BB的编号
       LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
       PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
 
       /* Load SHM pointer */
-
+      // 通过插入load指令，获取共享内存的地址
       LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
       MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *MapPtrIdx =
           IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
 
       /* Update bitmap */
-
+      // 通过插入load指令来读取对应index的地址
       LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
       Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+      // 通过插入add指令来将对应index的值加1
       Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+      // 通过创建store指令将新值写入，更新共享内存
       IRB.CreateStore(Incr, MapPtrIdx)
           ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 
       /* Set prev_loc to cur_loc >> 1 */
-
+      // 将当前cur_loc的值右移一位，并通过插入store指令，更新__afl_prev_loc的值
       StoreInst *Store =
           IRB.CreateStore(ConstantInt::get(Int32Ty, cur_loc >> 1), AFLPrevLoc);
       Store->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
