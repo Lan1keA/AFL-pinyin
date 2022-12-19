@@ -108,18 +108,18 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   /* Get globals for the SHM region and the previous location. Note that
      __afl_prev_loc is thread-local. */
-  // 指向共享内存的指针
+  // 指向共享内存的指针，自外部符号__afl_area_ptr获取
   GlobalVariable *AFLMapPtr =
       new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
                          GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
 
-  // 上一个BB的编号
+  // 上一个BB的编号，自外部符号__afl_prev_loc获取
   GlobalVariable *AFLPrevLoc = new GlobalVariable(
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
   /* Instrument all the things! */
-
+  // 已被插桩的BB的数量
   int inst_blocks = 0;
 
   /* 对于Module中的每一个Function:
