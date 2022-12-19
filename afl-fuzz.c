@@ -7078,7 +7078,7 @@ static void check_if_tty(void) {
     return;
   }
 
-  if (ioctl(1, TIOCGWINSZ, &ws)) {
+  if (ioctl(1, TIOCGWINSZ, &ws)) { // 通过ioctl来读取window size
 
     if (errno == ENOTTY) {
       OKF("Looks like we're not running on a tty, so I'll be a bit less verbose.");
@@ -7552,7 +7552,7 @@ static void handle_resize(int sig) {
 static void check_asan_opts(void) {
   u8* x = getenv("ASAN_OPTIONS");
 
-  if (x) {
+  if (x) { // 如果环境变量ASAN_OPTIONS存在
 
     if (!strstr(x, "abort_on_error=1"))
       FATAL("Custom ASAN_OPTIONS set without abort_on_error=1 - please fix!");
@@ -7564,7 +7564,7 @@ static void check_asan_opts(void) {
 
   x = getenv("MSAN_OPTIONS");
 
-  if (x) {
+  if (x) {  // 如果环境变量MSAN_OPTIONS存在
 
     if (!strstr(x, "exit_code=" STRINGIFY(MSAN_ERROR)))
       FATAL("Custom MSAN_OPTIONS set without exit_code="
@@ -7640,29 +7640,29 @@ EXP_ST void setup_signal_handlers(void) {
   sigemptyset(&sa.sa_mask);
 
   /* Various ways of saying "stop". */
-
+  // 处理终止信号，使用handle_stop_sig函数处理SIGHUP, SIGINT, SIGTERM
   sa.sa_handler = handle_stop_sig;
   sigaction(SIGHUP, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
   sigaction(SIGTERM, &sa, NULL);
 
   /* Exec timeout notifications. */
-
+  // 处理超时，使用handle_timeout函数处理SIGALRM
   sa.sa_handler = handle_timeout;
   sigaction(SIGALRM, &sa, NULL);
 
   /* Window resize */
-
+  // 调整窗口大小，使用handle_resize函数处理SIGWINCH
   sa.sa_handler = handle_resize;
   sigaction(SIGWINCH, &sa, NULL);
 
   /* SIGUSR1: skip entry */
-
+  // 收到自定义信号SIGUSR1，则执行handle_skipreq
   sa.sa_handler = handle_skipreq;
   sigaction(SIGUSR1, &sa, NULL);
 
   /* Things we don't care about. */
-
+  // 忽略SIGTSTP, SIGPIPE
   sa.sa_handler = SIG_IGN;
   sigaction(SIGTSTP, &sa, NULL);
   sigaction(SIGPIPE, &sa, NULL);
@@ -7795,6 +7795,7 @@ int main(int argc, char** argv) {
   gettimeofday(&tv, &tz);
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
 
+  // 解析afl-fuzz命令行参数
   while ((opt = getopt(argc, argv, "+i:o:f:m:b:t:T:dnCB:S:M:x:QV")) > 0)
 
     switch (opt) {
@@ -7988,10 +7989,10 @@ int main(int argc, char** argv) {
 
   if (optind == argc || !in_dir || !out_dir) usage(argv[0]);
 
-  setup_signal_handlers();
-  check_asan_opts();
+  setup_signal_handlers(); // 注册必要的信号处理函数
+  check_asan_opts(); // 检查环境变量中的asan相关参数
 
-  if (sync_id) fix_up_sync();
+  if (sync_id) fix_up_sync(); // 如果指定了-M, -S参数，即启用了并行fuzz，则做相应的多进程配置
 
   if (!strcmp(in_dir, out_dir))
     FATAL("Input and output directories can't be the same");
@@ -8025,16 +8026,16 @@ int main(int argc, char** argv) {
   if (getenv("AFL_LD_PRELOAD"))
     FATAL("Use AFL_PRELOAD instead of AFL_LD_PRELOAD");
 
-  save_cmdline(argc, argv);
+  save_cmdline(argc, argv); // 拷贝当前的命令行参数
 
-  fix_up_banner(argv[optind]);
+  fix_up_banner(argv[optind]); // 修剪并且创建一个运行横幅
 
-  check_if_tty();
+  check_if_tty(); // 检查是否在tty上面运行
 
-  get_core_count();
+  get_core_count(); // 获取host的CPU逻辑核心数量，评估性能与负载，给出可能的并行fuzz建议
 
 #ifdef HAVE_AFFINITY
-  bind_to_free_cpu();
+  bind_to_free_cpu(); // 将当前fuzz进程交由合适的CPU核心处理
 #endif /* HAVE_AFFINITY */
 
   check_crash_handling();
