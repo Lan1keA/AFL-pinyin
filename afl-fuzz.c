@@ -803,14 +803,14 @@ static void mark_as_redundant(struct queue_entry* q, u8 state) {
 
 static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
 
-  struct queue_entry* q = ck_alloc(sizeof(struct queue_entry));
+  struct queue_entry* q = ck_alloc(sizeof(struct queue_entry)); // queue_entry 组成链表结构，此处创建一个新的链表结点
 
-  q->fname        = fname;
-  q->len          = len;
-  q->depth        = cur_depth + 1;
-  q->passed_det   = passed_det;
+  q->fname        = fname;          // 文件名
+  q->len          = len;            // 文件大小
+  q->depth        = cur_depth + 1;  // 当前深度
+  q->passed_det   = passed_det;     //
 
-  if (q->depth > max_depth) max_depth = q->depth;
+  if (q->depth > max_depth) max_depth = q->depth; // 若当前深度大于最大深度，则最大深度设定为当前深度
 
   if (queue_top) {
 
@@ -1377,13 +1377,13 @@ EXP_ST void setup_shm(void) {
   memset(virgin_tmout, 255, MAP_SIZE);
   memset(virgin_crash, 255, MAP_SIZE);
 
-  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
+  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600); // 分配共享内存，key为IPC_PRIVATE，大小为MAP_SIZE，权限为0600
 
   if (shm_id < 0) PFATAL("shmget() failed");
 
-  atexit(remove_shm);
+  atexit(remove_shm); // 注册atexit handler为remove_shm
 
-  shm_str = alloc_printf("%d", shm_id);
+  shm_str = alloc_printf("%d", shm_id); // 创建一个shm_id的字符串shm_str
 
   /* If somebody is asking us to fuzz instrumented binaries in dumb mode,
      we don't want them to detect instrumentation, since we won't be sending
@@ -1394,8 +1394,9 @@ EXP_ST void setup_shm(void) {
 
   ck_free(shm_str);
 
-  trace_bits = shmat(shm_id, NULL, 0);
-  
+  // trace_bits是用做SHM with instrumentation bitmap
+  trace_bits = shmat(shm_id, NULL, 0); /* 第一次创建完共享内存时，它还不能被任何进程访问，所以通过shmat来启动对该共享内存的访问，并把共享内存连接到当前进程的虚拟内存空间
+                                                             第二个参数shmaddr指定共享内存连接到当前进程中的地址位置，设为NULL表示让系统来选择共享内存的映射到当前进程虚拟内存空间的地址 */
   if (trace_bits == (void *)-1) PFATAL("shmat() failed");
 
 }
@@ -1441,7 +1442,7 @@ static void read_testcases(void) {
   /* Auto-detect non-in-place resumption attempts. */
 
   fn = alloc_printf("%s/queue", in_dir);
-  if (!access(fn, F_OK)) in_dir = fn; else ck_free(fn);
+  if (!access(fn, F_OK)) in_dir = fn; else ck_free(fn); // 尝试访问in_dir/queue文件夹，如果存在就重新设置in_dir为in_dir/queue
 
   ACTF("Scanning '%s'...", in_dir);
 
@@ -1449,7 +1450,7 @@ static void read_testcases(void) {
      the ordering  of test cases would vary somewhat randomly and would be
      difficult to control. */
 
-  nl_cnt = scandir(in_dir, &nl, NULL, alphasort);
+  nl_cnt = scandir(in_dir, &nl, NULL, alphasort); // 扫描in_dir，并将结果保存在struct dirent **nl里
 
   if (nl_cnt < 0) {
 
@@ -1472,11 +1473,11 @@ static void read_testcases(void) {
 
   }
 
-  for (i = 0; i < nl_cnt; i++) {
+  for (i = 0; i < nl_cnt; i++) { // 遍历nl
 
     struct stat st;
 
-    u8* fn = alloc_printf("%s/%s", in_dir, nl[i]->d_name);
+    u8* fn = alloc_printf("%s/%s", in_dir, nl[i]->d_name); // nl[i]->d_name的值为input文件夹下的文件名字符串
     u8* dfn = alloc_printf("%s/.state/deterministic_done/%s", in_dir, nl[i]->d_name);
 
     u8  passed_det = 0;
@@ -1488,7 +1489,7 @@ static void read_testcases(void) {
 
     /* This also takes care of . and .. */
 
-    if (!S_ISREG(st.st_mode) || !st.st_size || strstr(fn, "/README.testcases")) {
+    if (!S_ISREG(st.st_mode) || !st.st_size || strstr(fn, "/README.testcases")) { // 过滤掉 . .. README.testcases
 
       ck_free(fn);
       ck_free(dfn);
@@ -1496,7 +1497,7 @@ static void read_testcases(void) {
 
     }
 
-    if (st.st_size > MAX_FILE) 
+    if (st.st_size > MAX_FILE) // 测试用例文件大小不能大于1MB
       FATAL("Test case '%s' is too big (%s, limit is %s)", fn,
             DMS(st.st_size), DMS(MAX_FILE));
 
@@ -1508,7 +1509,7 @@ static void read_testcases(void) {
     if (!access(dfn, F_OK)) passed_det = 1;
     ck_free(dfn);
 
-    add_to_queue(fn, st.st_size, passed_det);
+    add_to_queue(fn, st.st_size, passed_det); // 将当前测试用例文件加入到queue中
 
   }
 
@@ -7158,10 +7159,10 @@ EXP_ST void setup_dirs_fds(void) {
 
   ACTF("Setting up output directories...");
 
-  if (sync_id && mkdir(sync_dir, 0700) && errno != EEXIST)
+  if (sync_id && mkdir(sync_dir, 0700) && errno != EEXIST) // 若以并行模式运行afl-fuzz，则创建sync_dir
       PFATAL("Unable to create '%s'", sync_dir);
 
-  if (mkdir(out_dir, 0700)) {
+  if (mkdir(out_dir, 0700)) { // 创建out_dir，存放fuzz输出结果
 
     if (errno != EEXIST) PFATAL("Unable to create '%s'", out_dir);
 
@@ -7186,7 +7187,7 @@ EXP_ST void setup_dirs_fds(void) {
   /* Queue directory for any starting & discovered paths. */
 
   tmp = alloc_printf("%s/queue", out_dir);
-  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp); // 创建out_dir/queue文件夹
   ck_free(tmp);
 
   /* Top-level directory for queue metadata used for session
@@ -8042,14 +8043,14 @@ int main(int argc, char** argv) {
   check_cpu_governor();
 
   setup_post();
-  setup_shm();
+  setup_shm(); // 配置共享内存和virgin_bits
   init_count_class16();
 
-  setup_dirs_fds();
-  read_testcases();
-  load_auto();
+  setup_dirs_fds(); // 准备输出文件夹和fd
+  read_testcases(); // 从输入文件夹中读取所有文件，然后将它们排队进行测试
+  load_auto(); // load自动生成的提取出来的词典token
 
-  pivot_inputs();
+  pivot_inputs(); // 为in_dir里的testcase，在out_dir里创建hard link
 
   if (extras_dir) load_extras(extras_dir);
 
