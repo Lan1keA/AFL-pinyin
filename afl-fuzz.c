@@ -5161,17 +5161,20 @@ static u8 fuzz_one(char** argv) {
   /*********************************************
    * SIMPLE BITFLIP (+dictionary construction) *
    *********************************************/
-
+  /* 通过将单个bit与1进行异或，以对其进行翻转 
+     这段宏的具体实现原理需结合下方变异代码理解
+     总体而言，实现的是以1byte为一组，按小端序对其中的8个bit中的某一个进行位翻转
+     注：传入的_b参数为测试用例数据缓冲区的bit索引，对其进行>>3运算后即得到byte索引 */ 
 #define FLIP_BIT(_ar, _b) do { \
     u8* _arf = (u8*)(_ar); \
     u32 _bf = (_b); \
-    _arf[(_bf) >> 3] ^= (128 >> ((_bf) & 7)); \
+    _arf[(_bf) >> 3] ^= (128 >> ((_bf) & 7)); \ // 对当前待变异byte的某一bit进行位翻转，如小端序第四位则做：XXXXXXXX ^= 00001000，(_bf) & 7 以得到 0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7,0,1,2,3......
   } while (0)
 
   /* Single walking bit. */
-
+  // 变异策略：单bit翻转。每次翻转1bit，测试后再翻转回来
   stage_short = "flip1";
-  stage_max   = len << 3;
+  stage_max   = len << 3; // len为测试用例数据的byte长度，<<3后得到bit长度，用于后续逐bit翻转
   stage_name  = "bitflip 1/1";
 
   stage_val_type = STAGE_VAL_NONE;
@@ -6890,9 +6893,9 @@ EXP_ST void check_binary(u8* fname) {
         !(st.st_mode & 0111) || (f_len = st.st_size) < 4)
       FATAL("Program '%s' not found or not executable", fname);
 
-  } else {
+  } else { // 从环境变量PATH中的路径里查找目标binary
 
-    while (env_path) {
+    while (env_path) { // 遍历PATH字符串值
 
       u8 *cur_elem, *delim = strchr(env_path, ':');
 
@@ -6930,20 +6933,20 @@ EXP_ST void check_binary(u8* fname) {
   /* Check for blatant user errors. */
 
   if ((!strncmp(target_path, "/tmp/", 5) && !strchr(target_path + 5, '/')) ||
-      (!strncmp(target_path, "/var/tmp/", 9) && !strchr(target_path + 9, '/')))
+      (!strncmp(target_path, "/var/tmp/", 9) && !strchr(target_path + 9, '/'))) // 检测目标文件是否被置于了tmpfs路径中
      FATAL("Please don't keep binaries in /tmp or /var/tmp");
 
   fd = open(target_path, O_RDONLY);
 
   if (fd < 0) PFATAL("Unable to open '%s'", target_path);
 
-  f_data = mmap(0, f_len, PROT_READ, MAP_PRIVATE, fd, 0);
+  f_data = mmap(0, f_len, PROT_READ, MAP_PRIVATE, fd, 0); // 将目标文件mmap到地址空间中来
 
   if (f_data == MAP_FAILED) PFATAL("Unable to mmap file '%s'", target_path);
 
   close(fd);
 
-  if (f_data[0] == '#' && f_data[1] == '!') {
+  if (f_data[0] == '#' && f_data[1] == '!') { // 检测文件魔数是否为Shebang，为可执行文本文件，而非二进制文件
 
     SAYF("\n" cLRD "[-] " cRST
          "Oops, the target binary looks like a shell script. Some build systems will\n"
@@ -6961,12 +6964,12 @@ EXP_ST void check_binary(u8* fname) {
 
 #ifndef __APPLE__
 
-  if (f_data[0] != 0x7f || memcmp(f_data + 1, "ELF", 3))
+  if (f_data[0] != 0x7f || memcmp(f_data + 1, "ELF", 3)) // 检测ELF魔数
     FATAL("Program '%s' is not an ELF binary", target_path);
 
 #else
 
-  if (f_data[0] != 0xCF || f_data[1] != 0xFA || f_data[2] != 0xED)
+  if (f_data[0] != 0xCF || f_data[1] != 0xFA || f_data[2] != 0xED) // 检测Mach-O魔数
     FATAL("Program '%s' is not a 64-bit Mach-O binary", target_path);
 
 #endif /* ^!__APPLE__ */
@@ -7004,11 +7007,11 @@ EXP_ST void check_binary(u8* fname) {
   }
 
   if (memmem(f_data, f_len, "libasan.so", 10) ||
-      memmem(f_data, f_len, "__msan_init", 11)) uses_asan = 1;
+      memmem(f_data, f_len, "__msan_init", 11)) uses_asan = 1; // 在文件中找到了"libasan.so"或"__msan_init"字符串，则代表目标编译时使用了asan
 
   /* Detect persistent & deferred init signatures in the binary. */
 
-  if (memmem(f_data, f_len, PERSIST_SIG, strlen(PERSIST_SIG) + 1)) {
+  if (memmem(f_data, f_len, PERSIST_SIG, strlen(PERSIST_SIG) + 1)) { // 在文件中找到了"##SIG_AFL_PERSISTENT##"，则代表目标目标编译时启用了AFL Persistent mode
 
     OKF(cPIN "Persistent mode binary detected.");
     setenv(PERSIST_ENV_VAR, "1", 1);
@@ -7590,9 +7593,9 @@ EXP_ST void detect_file_args(char** argv) {
 
   while (argv[i]) {
 
-    u8* aa_loc = strstr(argv[i], "@@");
+    u8* aa_loc = strstr(argv[i], "@@"); // 索引到命令行参数中 @@ 出现的位置
 
-    if (aa_loc) {
+    if (aa_loc) { // 对于此位置执行：
 
       u8 *aa_subst, *n_arg;
 
@@ -8056,11 +8059,11 @@ int main(int argc, char** argv) {
 
   if (!timeout_given) find_timeout();
 
-  detect_file_args(argv + optind + 1);
+  detect_file_args(argv + optind + 1); // 如果fuzz数据是以文件形式以命令行参数传递给待测程序，则构造其argv
 
   if (!out_file) setup_stdio_file();
 
-  check_binary(argv[optind]);
+  check_binary(argv[optind]); // 检查目标程序是否是已插桩的ELF或Mach-O
 
   start_time = get_cur_time();
 
@@ -8069,7 +8072,7 @@ int main(int argc, char** argv) {
   else
     use_argv = argv + optind;
 
-  perform_dry_run(use_argv);
+  perform_dry_run(use_argv); // 测试运行一下目标程序，检查是否有问题发生
 
   cull_queue();
 
@@ -8090,7 +8093,7 @@ int main(int argc, char** argv) {
     if (stop_soon) goto stop_fuzzing;
   }
 
-  while (1) {
+  while (1) { // Fuzzing过程的主循环
 
     u8 skipped_fuzz;
 
@@ -8132,7 +8135,7 @@ int main(int argc, char** argv) {
 
     }
 
-    skipped_fuzz = fuzz_one(use_argv);
+    skipped_fuzz = fuzz_one(use_argv); // 对当前用例进行Fuzz，（fuzz_one函数有1600多行，包含了多种变异策略
 
     if (!stop_soon && sync_id && !skipped_fuzz) {
       
